@@ -10,7 +10,7 @@ console.log("Starting server...");
 // DATABASE CONNECTION
 // ==========================
 if (!process.env.DATABASE_URL) {
-  console.error("DATABASE_URL is not set!");
+  console.error("DATABASE_URL is NOT set!");
 } else {
   console.log("DATABASE_URL detected");
 }
@@ -39,9 +39,20 @@ CREATE TABLE IF NOT EXISTS users (
 // ROUTES
 // ==========================
 
-// Health check
+// Root
+app.get("/", (req, res) => {
+  res.json({
+    status: "ok",
+    message: "Root alive"
+  });
+});
+
+// Ping
 app.get("/ping", (req, res) => {
-  res.json({ status: "ok", message: "API is working!" });
+  res.json({
+    status: "ok",
+    message: "API is working!"
+  });
 });
 
 // Database check
@@ -61,7 +72,7 @@ app.get("/db", async (req, res) => {
   }
 });
 
-// Login endpoint
+// Login
 app.post("/login", async (req, res) => {
   const { username } = req.body;
 
