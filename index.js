@@ -3,16 +3,19 @@ const { Pool } = require("pg");
 const path = require("path");
 
 const app = express();
+app.use(express.json());
 
 const PORT = process.env.PORT || 8080;
 const DATABASE_URL = process.env.DATABASE_URL;
 
 console.log("Starting FullBright API...");
-console.log("DATABASE_URL detected");
 
-app.use(express.json());
-app.use(express.static("public"));
+if (!DATABASE_URL) {
+  console.error("DATABASE_URL not set!");
+  process.exit(1);
+}
 
+// Подключение к базе
 const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: {
@@ -20,30 +23,28 @@ const pool = new Pool({
   }
 });
 
-// Создание таблицы
+// Проверка таблицы
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
-      hwid TEXT,
-      last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
+      last_login TIMESTAMP DEFAULT NOW()
+    )
   `);
   console.log("Users table ready");
 }
 
 initDB();
 
-// ===== API =====
+// -------------------- API --------------------
 
 app.get("/ping", (req, res) => {
   res.json({ status: "ok", message: "API is working!" });
 });
 
 app.post("/login", async (req, res) => {
-  const { username, hwid } = req.body;
-
+  const { username } = req.body;
   if (!username) {
     return res.json({ status: "error", message: "Username required" });
   }
@@ -51,12 +52,12 @@ app.post("/login", async (req, res) => {
   try {
     await pool.query(
       `
-      INSERT INTO users (username, hwid, last_login)
-      VALUES ($1, $2, NOW())
+      INSERT INTO users (username, last_login)
+      VALUES ($1, NOW())
       ON CONFLICT (username)
-      DO UPDATE SET hwid = $2, last_login = NOW()
+      DO UPDATE SET last_login = NOW()
       `,
-      [username, hwid || "unknown"]
+      [username]
     );
 
     res.json({
@@ -69,27 +70,26 @@ app.post("/login", async (req, res) => {
   }
 });
 
-// ===== АДМИН ПАНЕЛЬ API =====
+// -------------------- АДМИНКА --------------------
 
-app.get("/admin/users", async (req, res) => {
+// Раздаём статические файлы
+app.use("/admin", express.static(path.join(__dirname, "admin")));
+
+// API для панели
+app.get("/admin/api/users", async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT id, username, hwid, last_login FROM users ORDER BY last_login DESC"
+      "SELECT id, username, last_login FROM users ORDER BY last_login DESC"
     );
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: "DB error" });
+    console.error(err);
+    res.status(500).json({ error: "Database error" });
   }
 });
 
-// ===== ВЕБ-ПАНЕЛЬ =====
+// -------------------- START --------------------
 
-app.get("/admin", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "admin.html"));
-});
-
-// ===== ЗАПУСК =====
-
-app.listen(PORT, "0.0.0.0", () => {
+app.listen(PORT, () => {
   console.log(`Server started on port ${PORT}`);
 });
