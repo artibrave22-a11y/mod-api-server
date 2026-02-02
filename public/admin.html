@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>FullBright Admin Panel</title>
+  <style>
+    body {
+      background: #0f0f14;
+      color: white;
+      font-family: Arial;
+      padding: 20px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 8px;
+    }
+    th {
+      background: #222;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔥 FullBright Admin Panel</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Username</th>
+        <th>HWID</th>
+        <th>Last Login</th>
+      </tr>
+    </thead>
+    <tbody id="users"></tbody>
+  </table>
+
+  <script>
+    async function loadUsers() {
+      const res = await fetch("/admin/users");
+      const users = await res.json();
+
+      const table = document.getElementById("users");
+      table.innerHTML = "";
+
+      users.forEach(u => {
+        table.innerHTML += `
+          <tr>
+            <td>${u.id}</td>
+            <td>${u.username}</td>
+            <td>${u.hwid || "—"}</td>
+            <td>${u.last_login}</td>
+          </tr>
+        `;
+      });
+    }
+
+    loadUsers();
+    setInterval(loadUsers, 3000);
+  </script>
+</body>
+</html>
