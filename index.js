@@ -1,184 +1,144 @@
-const express = require('express');
-const { Pool } = require('pg');
+const express = require("express");
+const { Pool } = require("pg");
 
 const app = express();
 app.use(express.json());
 
-// =======================
-// CONFIG
-// =======================
-const PORT = process.env.PORT || 8080;
-const DATABASE_URL = process.env.DATABASE_URL;
+console.log("Starting FullBright API...");
 
-if (!DATABASE_URL) {
-  console.error("DATABASE_URL not set");
+// =====================
+// DATABASE
+// =====================
+if (!process.env.DATABASE_URL) {
+  console.error("DATABASE_URL not found");
   process.exit(1);
 }
 
-console.log("Starting FullBright API...");
 console.log("DATABASE_URL detected");
 
-// =======================
-// DATABASE
-// =======================
 const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
-// Init table
+// =====================
+// INIT TABLE
+// =====================
 async function initDB() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id SERIAL PRIMARY KEY,
-      username TEXT UNIQUE NOT NULL,
-      hwid TEXT NOT NULL,
-      last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  console.log("Users table ready");
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        hardware_id TEXT,
+        last_login TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    console.log("Users table ready");
+  } catch (err) {
+    console.error("DB INIT ERROR:", err);
+    process.exit(1);
+  }
 }
 
-initDB().catch(err => {
-  console.error("DB INIT ERROR:", err);
-  process.exit(1);
-});
+initDB();
 
-// =======================
+// =====================
 // ROUTES
-// =======================
-
-// Health check
-app.get('/ping', (req, res) => {
+// =====================
+app.get("/ping", (req, res) => {
   res.json({
     status: "ok",
-    message: "FullBright API alive"
+    service: "fullbright-api",
+    time: new Date().toISOString()
   });
 });
 
-// Login / Register
-app.post('/login', async (req, res) => {
-  const { username, hwid } = req.body;
-
-  if (!username || !hwid) {
-    return res.status(400).json({
-      status: "error",
-      message: "username and hwid required"
-    });
-  }
-
+// LOGIN / REGISTER
+app.post("/login", async (req, res) => {
   try {
-    const existing = await pool.query(
-      "SELECT id FROM users WHERE username = $1",
+    const { username, hardwareId } = req.body;
+
+    if (!username || !hardwareId) {
+      return res.status(400).json({
+        status: "error",
+        message: "username and hardwareId required"
+      });
+    }
+
+    const result = await pool.query(
+      "SELECT * FROM users WHERE username = $1",
       [username]
     );
 
-    if (existing.rows.length === 0) {
+    if (result.rows.length === 0) {
       await pool.query(
-        "INSERT INTO users (username, hwid) VALUES ($1, $2)",
-        [username, hwid]
+        "INSERT INTO users (username, hardware_id) VALUES ($1, $2)",
+        [username, hardwareId]
       );
-      console.log(`Registered new user: ${username}`);
-    } else {
-      await pool.query(
-        "UPDATE users SET last_login = CURRENT_TIMESTAMP, hwid = $2 WHERE username = $1",
-        [username, hwid]
-      );
-      console.log(`User login: ${username}`);
-    }
 
-    res.json({
-      status: "ok",
-      token: `fb-token-${username}`
-    });
+      return res.json({
+        status: "ok",
+        message: "User registered",
+        token: "demo-token-" + username
+      });
+    } else {
+      const user = result.rows[0];
+
+      if (user.hardware_id && user.hardware_id !== hardwareId) {
+        return res.status(403).json({
+          status: "error",
+          message: "Hardware mismatch"
+        });
+      }
+
+      await pool.query(
+        "UPDATE users SET last_login = NOW() WHERE username = $1",
+        [username]
+      );
+
+      return res.json({
+        status: "ok",
+        message: "Login successful",
+        token: "demo-token-" + username
+      });
+    }
   } catch (err) {
     console.error("LOGIN ERROR:", err);
     res.status(500).json({
       status: "error",
-      message: "database error"
+      message: "Internal server error"
     });
   }
 });
 
-// =======================
-// ADMIN PANEL (NO PASSWORD)
-// =======================
-app.get('/admin', async (req, res) => {
+// ADMIN PANEL API
+app.get("/users", async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT id, username, hwid, last_login FROM users ORDER BY last_login DESC"
+      "SELECT id, username, hardware_id, last_login FROM users ORDER BY id ASC"
     );
-
-    const rows = result.rows.map(u => `
-      <tr>
-        <td>${u.id}</td>
-        <td>${u.username}</td>
-        <td>${u.hwid}</td>
-        <td>${u.last_login}</td>
-      </tr>
-    `).join('');
-
-    res.send(`
-<!DOCTYPE html>
-<html>
-<head>
-  <title>FullBright Admin Panel</title>
-  <style>
-    body {
-      background: #0f0f1a;
-      color: white;
-      font-family: Arial, sans-serif;
-      padding: 20px;
-    }
-    h1 {
-      color: #7c4dff;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-    }
-    th, td {
-      border: 1px solid #444;
-      padding: 8px;
-      text-align: left;
-    }
-    th {
-      background: #7c4dff;
-    }
-    tr:nth-child(even) {
-      background: #1a1a2e;
-    }
-  </style>
-</head>
-<body>
-  <h1>FullBright Admin Panel</h1>
-  <p>Total users: ${result.rows.length}</p>
-
-  <table>
-    <tr>
-      <th>ID</th>
-      <th>Username</th>
-      <th>HWID</th>
-      <th>Last Login</th>
-    </tr>
-    ${rows}
-  </table>
-</body>
-</html>
-    `);
+    res.json(result.rows);
   } catch (err) {
-    console.error("ADMIN ERROR:", err);
-    res.status(500).send("Admin panel error");
+    console.error("USERS ERROR:", err);
+    res.status(500).json({ error: "DB error" });
   }
 });
 
-// =======================
+// =====================
+// KEEP ALIVE
+// =====================
+setInterval(() => {
+  console.log("Heartbeat:", new Date().toISOString());
+}, 30000);
+
+// =====================
 // START SERVER
-// =======================
+// =====================
 const PORT = process.env.PORT || 8080;
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server started on port ${PORT}`);
 });
-
