@@ -1,63 +1,21 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-  <title>FullBright Admin Panel</title>
-  <style>
-    body {
-      background: #0f0f14;
-      color: white;
-      font-family: Arial;
-      padding: 20px;
-    }
-    table {
-      border-collapse: collapse;
-      width: 100%;
-    }
-    th, td {
-      border: 1px solid #444;
-      padding: 8px;
-    }
-    th {
-      background: #222;
-    }
-  </style>
+  <meta charset="UTF-8" />
+  <title>FullBright Admin</title>
 </head>
 <body>
-  <h1>🔥 FullBright Admin Panel</h1>
-  <table>
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Username</th>
-        <th>HWID</th>
-        <th>Last Login</th>
-      </tr>
-    </thead>
-    <tbody id="users"></tbody>
-  </table>
+  <h1>Админка FullBright</h1>
+  <button onclick="loadUsers()">Загрузить игроков</button>
+  <pre id="out"></pre>
 
   <script>
     async function loadUsers() {
-      const res = await fetch("/admin/users");
-      const users = await res.json();
-
-      const table = document.getElementById("users");
-      table.innerHTML = "";
-
-      users.forEach(u => {
-        table.innerHTML += `
-          <tr>
-            <td>${u.id}</td>
-            <td>${u.username}</td>
-            <td>${u.hwid || "—"}</td>
-            <td>${u.last_login}</td>
-          </tr>
-        `;
-      });
+      const res = await fetch("/admin/api/users");
+      const data = await res.json();
+      document.getElementById("out").textContent =
+        JSON.stringify(data, null, 2);
     }
-
-    loadUsers();
-    setInterval(loadUsers, 3000);
   </script>
 </body>
 </html>
