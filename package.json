@@ -1,7 +1,7 @@
 {
-  "name": "mod-api-server",
+  "name": "fullbright-api",
   "version": "1.0.0",
-  "description": "Minecraft mod API server with PostgreSQL",
+  "description": "FullBright Mod API with HWID auth",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
