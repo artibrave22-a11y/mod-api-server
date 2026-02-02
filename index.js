@@ -5,13 +5,14 @@ const path = require("path");
 const app = express();
 app.use(express.json());
 
+// ======================
+// CONFIG
+// ======================
 const PORT = process.env.PORT || 8080;
 const DATABASE_URL = process.env.DATABASE_URL;
 
-console.log("Starting FullBright API...");
-
 if (!DATABASE_URL) {
-  console.error("DATABASE_URL not found");
+  console.log("❌ DATABASE_URL not found");
   process.exit(1);
 }
 
@@ -25,33 +26,37 @@ const pool = new Pool({
   }
 });
 
-// Create users table
+// ======================
+// INIT TABLE
+// ======================
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
-      last_login TIMESTAMP DEFAULT NOW()
+      last_login TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `);
-  console.log("Users table ready");
+  console.log("✅ Users table ready");
 }
 
-initDB();
+// ======================
+// ROUTES
+// ======================
 
-// ======================
-// API ROUTES
-// ======================
+app.get("/", (req, res) => {
+  res.json({ status: "ok", message: "FullBright API is working!" });
+});
+
 app.get("/ping", (req, res) => {
-  res.json({ status: "ok", message: "API is working!" });
+  res.json({ status: "ok", ping: "pong" });
 });
 
 // LOGIN
 app.post("/login", async (req, res) => {
   const { username } = req.body;
-
   if (!username) {
-    return res.json({ status: "error", message: "Username required" });
+    return res.status(400).json({ status: "error", message: "Username required" });
   }
 
   try {
@@ -67,7 +72,7 @@ app.post("/login", async (req, res) => {
 
     res.json({
       status: "ok",
-      token: `demo-token-${username}`
+      token: "demo-token-" + username
     });
   } catch (err) {
     console.error(err);
@@ -76,7 +81,7 @@ app.post("/login", async (req, res) => {
 });
 
 // ======================
-// ADMIN PANEL (NO PASSWORD)
+// ADMIN PANEL (WEB)
 // ======================
 app.get("/admin", async (req, res) => {
   try {
@@ -84,53 +89,43 @@ app.get("/admin", async (req, res) => {
       "SELECT id, username, last_login FROM users ORDER BY last_login DESC"
     );
 
-    let html = `
-    <html>
-    <head>
-      <title>Admin Panel</title>
-      <style>
-        body { font-family: Arial; background:#111; color:#eee; padding:20px; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #444; padding: 8px; }
-        th { background:#222; }
-      </style>
-    </head>
-    <body>
-      <h1>Admin Panel</h1>
-      <table>
-        <tr>
-          <th>ID</th>
-          <th>Username</th>
-          <th>Last Login</th>
-        </tr>
-    `;
+    let rows = result.rows
+      .map(
+        u =>
+          `<tr><td>${u.id}</td><td>${u.username}</td><td>${u.last_login}</td></tr>`
+      )
+      .join("");
 
-    for (const user of result.rows) {
-      html += `
-        <tr>
-          <td>${user.id}</td>
-          <td>${user.username}</td>
-          <td>${user.last_login}</td>
-        </tr>
-      `;
-    }
-
-    html += `
-      </table>
-    </body>
-    </html>
-    `;
-
-    res.send(html);
+    res.send(`
+      <html>
+        <head>
+          <title>FullBright Admin</title>
+          <style>
+            body { font-family: Arial; background:#111; color:#eee; padding:20px }
+            table { border-collapse: collapse; width:100% }
+            td, th { border:1px solid #444; padding:8px }
+          </style>
+        </head>
+        <body>
+          <h1>FullBright Admin Panel</h1>
+          <table>
+            <tr><th>ID</th><th>Username</th><th>Last Login</th></tr>
+            ${rows}
+          </table>
+        </body>
+      </html>
+    `);
   } catch (err) {
     console.error(err);
-    res.status(500).send("Admin panel error");
+    res.status(500).send("Database error");
   }
 });
 
 // ======================
-// START SERVER
+// START
 // ======================
-app.listen(PORT, () => {
-  console.log(`Server started on port ${PORT}`);
+initDB().then(() => {
+  app.listen(PORT, () => {
+    console.log("🚀 FullBright API started on port " + PORT);
+  });
 });
