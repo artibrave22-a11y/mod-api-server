@@ -4,6 +4,9 @@ const { Pool } = require('pg');
 const app = express();
 app.use(express.json());
 
+// =======================
+// CONFIG
+// =======================
 const PORT = process.env.PORT || 8080;
 const DATABASE_URL = process.env.DATABASE_URL;
 
@@ -23,7 +26,7 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// Create table if not exists
+// Init table
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -36,18 +39,24 @@ async function initDB() {
   console.log("Users table ready");
 }
 
-initDB().catch(console.error);
-
-// =======================
-// API ROUTES
-// =======================
-
-// Ping
-app.get('/ping', (req, res) => {
-  res.json({ status: "ok", message: "FullBright API alive" });
+initDB().catch(err => {
+  console.error("DB INIT ERROR:", err);
+  process.exit(1);
 });
 
-// Login
+// =======================
+// ROUTES
+// =======================
+
+// Health check
+app.get('/ping', (req, res) => {
+  res.json({
+    status: "ok",
+    message: "FullBright API alive"
+  });
+});
+
+// Login / Register
 app.post('/login', async (req, res) => {
   const { username, hwid } = req.body;
 
@@ -60,24 +69,22 @@ app.post('/login', async (req, res) => {
 
   try {
     const existing = await pool.query(
-      "SELECT * FROM users WHERE username = $1",
+      "SELECT id FROM users WHERE username = $1",
       [username]
     );
 
     if (existing.rows.length === 0) {
-      // New user
       await pool.query(
         "INSERT INTO users (username, hwid) VALUES ($1, $2)",
         [username, hwid]
       );
-      console.log(`New user registered: ${username}`);
+      console.log(`Registered new user: ${username}`);
     } else {
-      // Update login time
       await pool.query(
-        "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE username = $1",
-        [username]
+        "UPDATE users SET last_login = CURRENT_TIMESTAMP, hwid = $2 WHERE username = $1",
+        [username, hwid]
       );
-      console.log(`User logged in: ${username}`);
+      console.log(`User login: ${username}`);
     }
 
     res.json({
@@ -85,10 +92,10 @@ app.post('/login', async (req, res) => {
       token: `fb-token-${username}`
     });
   } catch (err) {
-    console.error(err);
+    console.error("LOGIN ERROR:", err);
     res.status(500).json({
       status: "error",
-      message: "Database error"
+      message: "database error"
     });
   }
 });
@@ -102,7 +109,7 @@ app.get('/admin', async (req, res) => {
       "SELECT id, username, hwid, last_login FROM users ORDER BY last_login DESC"
     );
 
-    let rows = result.rows.map(u => `
+    const rows = result.rows.map(u => `
       <tr>
         <td>${u.id}</td>
         <td>${u.username}</td>
@@ -112,51 +119,57 @@ app.get('/admin', async (req, res) => {
     `).join('');
 
     res.send(`
-      <html>
-      <head>
-        <title>FullBright Admin Panel</title>
-        <style>
-          body {
-            background:#0f0f1a;
-            color:white;
-            font-family:Arial;
-            padding:20px;
-          }
-          table {
-            border-collapse: collapse;
-            width: 100%;
-          }
-          th, td {
-            border:1px solid #444;
-            padding:8px;
-            text-align:left;
-          }
-          th {
-            background:#6c3cff;
-          }
-          tr:nth-child(even) {
-            background:#1a1a2e;
-          }
-        </style>
-      </head>
-      <body>
-        <h1>FullBright Admin Panel</h1>
-        <p>Total users: ${result.rows.length}</p>
-        <table>
-          <tr>
-            <th>ID</th>
-            <th>Username</th>
-            <th>HWID</th>
-            <th>Last Login</th>
-          </tr>
-          ${rows}
-        </table>
-      </body>
-      </html>
+<!DOCTYPE html>
+<html>
+<head>
+  <title>FullBright Admin Panel</title>
+  <style>
+    body {
+      background: #0f0f1a;
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    h1 {
+      color: #7c4dff;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background: #7c4dff;
+    }
+    tr:nth-child(even) {
+      background: #1a1a2e;
+    }
+  </style>
+</head>
+<body>
+  <h1>FullBright Admin Panel</h1>
+  <p>Total users: ${result.rows.length}</p>
+
+  <table>
+    <tr>
+      <th>ID</th>
+      <th>Username</th>
+      <th>HWID</th>
+      <th>Last Login</th>
+    </tr>
+    ${rows}
+  </table>
+</body>
+</html>
     `);
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Admin error");
+    console.error("ADMIN ERROR:", err);
+    res.status(500).send("Admin panel error");
   }
 });
 
